@@ -5,6 +5,7 @@ FUNCTION: Manages connectivity, circuit breaking, and order execution.
 import ccxt
 import time
 import logging
+from utils import log_trade # Import your centralized reporting tool
 
 class ExchangeManager:
     def __init__(self, config):
