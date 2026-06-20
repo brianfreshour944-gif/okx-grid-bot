@@ -17,5 +17,23 @@ class ExchangeManager:
         pass
 
     def place_order(self, side, symbol, price, qty):
-        # ... (Insert your place_single_order logic here)
-        pass
+        try:
+            # 1. Execute the actual order through CCXT
+            order = self.exchange.create_order(symbol, 'market', side, qty, price)
+            
+            # 2. Log to your dashboard ONLY after success
+            log_trade(
+                bot_name="Grok_Alpaca_Apex_v9_Final", # Or pass this in via config
+                symbol=symbol,
+                side=side,
+                qty=float(qty),
+                entry_price=float(price),
+                order_id=order['id']
+            )
+            
+            self.logger.info(f"✅ Order executed and logged: {symbol} {side}")
+            return order
+            
+        except Exception as e:
+            self.logger.error(f"❌ Order failed: {e}")
+            return None
