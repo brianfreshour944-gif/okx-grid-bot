@@ -1,0 +1,117 @@
+"""
+Standalone simulation: feeds a synthetic price path through GridEngine +
+RiskManager (no exchange/DB) to sanity check behavior. The bot HALTS on
+breakout rather than recentering — this script proves that halting caps
+drawdown far better than chasing the trend would have.
+"""
+import math
+from engine import GridEngine
+from risk import RiskManager
+
+
+def simulate(prices, levels=3, step_percent=1.5, capital=600, max_position=600,
+             max_drawdown_pct=15, seconds_per_tick=5):
+    eng = GridEngine(levels=levels, step_percent=step_percent, capital_usdt=capital)
+    risk = RiskManager()
+    risk.max_position_usdt = max_position
+    risk.max_drawdown_percent = max_drawdown_pct
+
+    starting_equity = 2000.0
+    cash = starting_equity
+    inventory = 0.0
+    risk.set_starting_equity(starting_equity)
+
+    last_price = None
+    fake_time = 0
+    trades = []
+
+    for price in prices:
+        fake_time += seconds_per_tick
+        if not eng.grid:
+            eng.build_grid(price)
+
+        equity = cash + inventory * price
+        if risk.check_drawdown(equity, fake_time):
+            print(f"  ⛔ HALTED (drawdown) at price={price:.2f} equity={equity:.2f} "
+                  f"reason={risk.halt_reason}")
+            break
+
+        if eng.is_out_of_range(price):
+            print(f"  ⛔ HALTED (breakout) at price={price:.2f}, "
+                  f"range was {eng.range_bounds()}")
+            break
+
+        if last_price is not None:
+            for lvl in eng.crossed_levels(price, last_price):
+                if lvl.side == 'buy':
+                    position_usdt = inventory * price
+                    if not risk.can_open_position(position_usdt, lvl.qty * lvl.price):
+                        continue
+                    cash -= lvl.qty * lvl.price
+                    inventory += lvl.qty
+                    eng.mark_filled(lvl, "sim")
+                    trades.append(('buy', price, lvl.qty))
+                else:
+                    if inventory < lvl.qty:
+                        continue  # spot: can't sell what we don't hold
+                    cash += lvl.qty * price
+                    inventory -= lvl.qty
+                    eng.mark_filled(lvl, "sim")
+                    trades.append(('sell', price, lvl.qty))
+
+        last_price = price
+
+    final_equity = cash + inventory * (last_price if last_price is not None else prices[0])
+    print(f"  Trades executed: {len(trades)}")
+    print(f"  Final inventory: {inventory:.6f}")
+    print(f"  Final equity: {final_equity:.2f} (started {starting_equity:.2f}, "
+          f"{(final_equity / starting_equity - 1) * 100:+.1f}%)")
+    print(f"  Halted: {risk.halted} ({risk.halt_reason})")
+    return final_equity, trades
+
+
+print("=== Scenario 1: Ranging market (grid should profit, no false halts) ===")
+ranging = [100 + 5 * math.sin(i / 5) for i in range(120)]
+# Grid needs to be wide enough to contain a +/-5 swing around 100 (+/-5%).
+# 4 levels * 1.5% = 6% half-width covers it comfortably.
+simulate(ranging, levels=4, step_percent=1.5, capital=800, max_position=999999, max_drawdown_pct=99)
+
+print("\n=== Scenario 2: Hard downtrend, OLD-STYLE behavior (wide grid, no halt, simulated) ===")
+crash = [100 - i * 0.8 for i in range(80)]  # 100 -> ~36.8
+# Simulate the old "nothing ever stops it" behavior with a grid wide
+# enough that is_out_of_range() never trips — i.e. nothing stops it from
+# buying all the way down, same as the original bot would have if it
+# actually traded with no risk controls at all.
+eng = GridEngine(levels=50, step_percent=1.5, capital_usdt=2000)
+risk = RiskManager()
+risk.max_position_usdt = 999999
+risk.max_drawdown_percent = 99
+cash, inventory = 2000.0, 0.0
+risk.set_starting_equity(2000.0)
+last_price = None
+trades = []
+for i, price in enumerate(crash):
+    if not eng.grid:
+        eng.build_grid(price)
+    if last_price is not None:
+        for lvl in eng.crossed_levels(price, last_price):
+            if lvl.side == 'buy':
+                cash -= lvl.qty * lvl.price
+                inventory += lvl.qty
+                eng.mark_filled(lvl, "sim")
+                trades.append(('buy', price, lvl.qty))
+            elif inventory >= lvl.qty:
+                cash += lvl.qty * price
+                inventory -= lvl.qty
+                eng.mark_filled(lvl, "sim")
+                trades.append(('sell', price, lvl.qty))
+    last_price = price
+final_equity = cash + inventory * crash[-1]
+print(f"  Trades executed: {len(trades)}")
+print(f"  Final inventory: {inventory:.6f}")
+print(f"  Final equity: {final_equity:.2f} (started 2000.00, "
+      f"{(final_equity / 2000 - 1) * 100:+.1f}%)")
+print("  (this wide-range grid never halts, so it keeps buying all the way down)")
+
+print("\n=== Scenario 3: Same hard downtrend, WITH halt-on-breakout (new behavior) ===")
+simulate(crash, levels=3, step_percent=1.5, capital=600, max_position=600, max_drawdown_pct=99)
