@@ -55,7 +55,7 @@ of that:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `OKX_API_KEY`, `OKX_SECRET`, `OKX_PASSWORD` | — | OKX API credentials |
+| `OKX_API_KEY`, `OKX_API_SECRET`, `OKX_PASSPHRASE` | — | OKX API credentials |
 | `OKX_SANDBOX` | `true` | Set to `false` to trade with real funds |
 | `TRADING_SYMBOL` | `BTC/USDT` | Market to trade |
 | `GRID_LEVELS` | `3` | Number of buy levels below center (and sell levels above) |
