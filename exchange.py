@@ -39,11 +39,22 @@ class ExchangeManager:
                 f"not your account login password."
             )
 
+        # ccxt's default OKX hostname (www.okx.com) returns "API key
+        # doesn't exist" (error 50119) for some regions/accounts even with
+        # valid, freshly-created keys — a known ccxt issue where the
+        # hostname it signs requests against doesn't match the regional
+        # endpoint OKX actually validates the key on. OKX's own web UI
+        # redirects to app.okx.com, and overriding ccxt's hostname to match
+        # resolves it. Override via OKX_HOSTNAME if you hit this on a
+        # different region/subdomain (e.g. OKX's EEA endpoint).
+        hostname = os.getenv("OKX_HOSTNAME", "app.okx.com")
+
         self.exchange = ccxt.okx({
             'apiKey': api_key,
             'secret': secret,
             'password': password,
-            'enableRateLimit': True
+            'enableRateLimit': True,
+            'hostname': hostname,
         })
 
         self.exchange.set_sandbox_mode(sandbox)
