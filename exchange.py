@@ -28,6 +28,17 @@ class ExchangeManager:
         password = os.getenv("OKX_PASSWORD", "")
         sandbox = os.getenv("OKX_SANDBOX", "true").lower() in ("1", "true", "yes")
 
+        missing = [name for name, val in [
+            ("OKX_API_KEY", api_key), ("OKX_SECRET", secret), ("OKX_PASSWORD", password)
+        ] if not val]
+        if missing:
+            raise ValueError(
+                f"Missing required environment variable(s): {', '.join(missing)}. "
+                f"Set these in your deployment environment (e.g. Coolify env vars) "
+                f"before starting the bot. OKX_PASSWORD is your API passphrase, "
+                f"not your account login password."
+            )
+
         self.exchange = ccxt.okx({
             'apiKey': api_key,
             'secret': secret,
