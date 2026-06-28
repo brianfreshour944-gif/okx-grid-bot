@@ -1,3 +1,4 @@
+
 """
 FILE: exchange.py
 FUNCTION: Manages connectivity, circuit breaking, and order execution.
@@ -94,12 +95,23 @@ class ExchangeManager:
 
     def get_equity_usdt(self):
         """
-        Returns total account equity in USDT terms (free + used USDT balance).
-        Used by the risk manager to check drawdown against the real account,
-        not just theoretical grid math.
+        Returns total account equity in USDT terms -- cash AND the current
+        market value of any held crypto, using OKX's own totalEq figure.
+        Used by the risk manager to check drawdown against the real
+        account, not just theoretical grid math.
+
+        FIX: previously only summed USDT cash (balance['USDT']['total']),
+        which meant the drawdown check was blind to losses sitting in held
+        BTC/etc inventory -- a real risk-management gap, not just a
+        reporting one, since the bot could be down significantly in
+        unrealized terms while this number looked unchanged.
         """
         try:
             balance = self.execute_with_backoff(self.exchange.fetch_balance)
+            data = balance.get('info', {}).get('data', [])
+            if data and data[0].get('totalEq'):
+                return float(data[0]['totalEq'])
+            # Fallback: USDT cash only, if totalEq isn't present for some reason
             usdt = balance.get('USDT', {}).get('total', 0) or 0
             return float(usdt)
         except Exception as e:
