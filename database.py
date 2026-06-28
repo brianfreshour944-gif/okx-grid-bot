@@ -1,3 +1,4 @@
+
 """
 FILE: database.py
 FUNCTION: Manages all DB operations. Shared across all bots.
@@ -39,6 +40,9 @@ def ensure_schema():
                 session_start_time TIMESTAMP
             )
         """)
+        cur.execute("ALTER TABLE bot_status ADD COLUMN IF NOT EXISTS starting_equity NUMERIC")
+        cur.execute("ALTER TABLE bot_status ADD COLUMN IF NOT EXISTS live_equity NUMERIC")
+        cur.execute("ALTER TABLE bot_status ADD COLUMN IF NOT EXISTS live_equity_updated_at TIMESTAMP")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS trades (
                 id SERIAL PRIMARY KEY,
@@ -95,6 +99,26 @@ def check_status(bot_name):
         cur.execute("SELECT status FROM bot_status WHERE bot_name = %s", (bot_name,))
         row = cur.fetchone()
         return row[0] if row else 'RUNNING'
+
+
+def report_equity(bot_name, current_equity):
+    """
+    Reports this bot's real account equity to the dashboard.
+    starting_equity is set the first time a bot reports in and is never
+    overwritten afterward. live_equity and live_equity_updated_at are
+    overwritten on every call.
+    """
+    with get_connection() as conn, conn.cursor() as cur:
+        cur.execute("""
+            INSERT INTO bot_status (bot_name, starting_equity, live_equity, live_equity_updated_at, last_update)
+            VALUES (%s, %s, %s, NOW(), NOW())
+            ON CONFLICT (bot_name) DO UPDATE
+            SET live_equity = EXCLUDED.live_equity,
+                live_equity_updated_at = NOW(),
+                last_update = NOW(),
+                starting_equity = COALESCE(bot_status.starting_equity, EXCLUDED.starting_equity)
+        """, (bot_name, float(current_equity), float(current_equity)))
+        conn.commit()
 
 
 def log_trade(bot_name, exchange, symbol, side, price, qty, order_id, fee=0.0):
