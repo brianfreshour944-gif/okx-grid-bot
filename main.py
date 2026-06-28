@@ -1,4 +1,5 @@
 
+
 """
 FILE: main.py
 FUNCTION: Orchestrates the bot execution flow.
@@ -57,6 +58,10 @@ def main():
         starting_equity = ex.get_equity_usdt()
         risk.set_starting_equity(starting_equity)
         print(f"💰 [STARTUP]: Starting equity recorded: {starting_equity:.2f} USDT")
+        try:
+            db.report_equity(BOT_NAME, starting_equity)
+        except Exception as e:
+            print(f"⚠️ [STARTUP]: Could not report starting equity to dashboard: {e}")
     except Exception as e:
         print(f"⚠️ [STARTUP]: Could not fetch starting equity ({e}). "
               f"Drawdown circuit breaker will be disabled until balance is reachable.")
@@ -86,6 +91,10 @@ def main():
             # Drawdown circuit breaker check (real account equity)
             try:
                 equity = ex.get_equity_usdt()
+                try:
+                    db.report_equity(BOT_NAME, equity)
+                except Exception as report_err:
+                    print(f"⚠️ [EQUITY REPORT]: Could not report live equity: {report_err}")
                 if risk.check_drawdown(equity, now):
                     db.log_event(BOT_NAME, "CIRCUIT_BREAKER", risk.halt_reason)
                     print(f"⛔ [CIRCUIT BREAKER]: {risk.halt_reason}")
