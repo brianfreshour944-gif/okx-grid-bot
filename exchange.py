@@ -1,4 +1,3 @@
-
 """
 FILE: exchange.py
 FUNCTION: Manages connectivity, circuit breaking, and order execution.
@@ -105,15 +104,35 @@ class ExchangeManager:
         BTC/etc inventory -- a real risk-management gap, not just a
         reporting one, since the bot could be down significantly in
         unrealized terms while this number looked unchanged.
+
+        DIAGNOSTIC (temporary): logs the raw totalEq string and a
+        per-currency eqUsd breakdown at INFO level so we can see exactly
+        what OKX is sending, since a reported ~$5M figure has been
+        confirmed wrong for a real account. Remove this logging once the
+        root cause is found.
         """
         try:
             balance = self.execute_with_backoff(self.exchange.fetch_balance)
             data = balance.get('info', {}).get('data', [])
+
+            usdt_total = balance.get('USDT', {}).get('total', 0) or 0
+            logger.info(f"🔍 [EQUITY DEBUG] Number of account entries in data[]: {len(data)}")
+            for i, entry in enumerate(data):
+                logger.info(f"🔍 [EQUITY DEBUG] entry[{i}] raw totalEq: {entry.get('totalEq')!r}")
+                details = entry.get('details', [])
+                logger.info(f"🔍 [EQUITY DEBUG] entry[{i}] has {len(details)} currency detail(s)")
+                for d in details:
+                    logger.info(f"🔍 [EQUITY DEBUG]   ccy={d.get('ccy')!r} eq={d.get('eq')!r} "
+                               f"eqUsd={d.get('eqUsd')!r} cashBal={d.get('cashBal')!r}")
+            logger.info(f"🔍 [EQUITY DEBUG] USDT-only total (fallback path): {usdt_total!r}")
+
             if data and data[0].get('totalEq'):
-                return float(data[0]['totalEq'])
+                result = float(data[0]['totalEq'])
+                logger.info(f"🔍 [EQUITY DEBUG] Returning totalEq-based result: {result}")
+                return result
             # Fallback: USDT cash only, if totalEq isn't present for some reason
-            usdt = balance.get('USDT', {}).get('total', 0) or 0
-            return float(usdt)
+            logger.info(f"🔍 [EQUITY DEBUG] No totalEq found, returning USDT-only fallback: {usdt_total}")
+            return float(usdt_total)
         except Exception as e:
             logger.error(f"❌ Failed to fetch balance: {e}")
             raise e
