@@ -116,22 +116,22 @@ class ExchangeManager:
             data = balance.get('info', {}).get('data', [])
 
             usdt_total = balance.get('USDT', {}).get('total', 0) or 0
-            logger.info(f"🔍 [EQUITY DEBUG] Number of account entries in data[]: {len(data)}")
+            print(f"🔍 [EQUITY DEBUG] Number of account entries in data[]: {len(data)}")
             for i, entry in enumerate(data):
-                logger.info(f"🔍 [EQUITY DEBUG] entry[{i}] raw totalEq: {entry.get('totalEq')!r}")
+                print(f"🔍 [EQUITY DEBUG] entry[{i}] raw totalEq: {entry.get('totalEq')!r}")
                 details = entry.get('details', [])
-                logger.info(f"🔍 [EQUITY DEBUG] entry[{i}] has {len(details)} currency detail(s)")
+                print(f"🔍 [EQUITY DEBUG] entry[{i}] has {len(details)} currency detail(s)")
                 for d in details:
-                    logger.info(f"🔍 [EQUITY DEBUG]   ccy={d.get('ccy')!r} eq={d.get('eq')!r} "
-                               f"eqUsd={d.get('eqUsd')!r} cashBal={d.get('cashBal')!r}")
-            logger.info(f"🔍 [EQUITY DEBUG] USDT-only total (fallback path): {usdt_total!r}")
+                    print(f"🔍 [EQUITY DEBUG]   ccy={d.get('ccy')!r} eq={d.get('eq')!r} "
+                         f"eqUsd={d.get('eqUsd')!r} cashBal={d.get('cashBal')!r}")
+            print(f"🔍 [EQUITY DEBUG] USDT-only total (fallback path): {usdt_total!r}")
 
             if data and data[0].get('totalEq'):
                 result = float(data[0]['totalEq'])
-                logger.info(f"🔍 [EQUITY DEBUG] Returning totalEq-based result: {result}")
+                print(f"🔍 [EQUITY DEBUG] Returning totalEq-based result: {result}")
                 return result
             # Fallback: USDT cash only, if totalEq isn't present for some reason
-            logger.info(f"🔍 [EQUITY DEBUG] No totalEq found, returning USDT-only fallback: {usdt_total}")
+            print(f"🔍 [EQUITY DEBUG] No totalEq found, returning USDT-only fallback: {usdt_total}")
             return float(usdt_total)
         except Exception as e:
             logger.error(f"❌ Failed to fetch balance: {e}")
