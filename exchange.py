@@ -105,34 +105,21 @@ class ExchangeManager:
         reporting one, since the bot could be down significantly in
         unrealized terms while this number looked unchanged.
 
-        DIAGNOSTIC (temporary): logs the raw totalEq string and a
-        per-currency eqUsd breakdown at INFO level so we can see exactly
-        what OKX is sending, since a reported ~$5M figure has been
-        confirmed wrong for a real account. Remove this logging once the
-        root cause is found.
+        NOTE: this OKX sandbox account's USDT balance is unusually large
+        (confirmed via diagnostic logging -- the account genuinely has
+        ~4.88M USDT per OKX's own API, not a parsing bug). totalEq will
+        reflect that until the demo account is reset/adjusted on OKX's
+        side. The bot's drawdown check still works correctly since it
+        only cares about relative % change, not the absolute figure.
         """
         try:
             balance = self.execute_with_backoff(self.exchange.fetch_balance)
             data = balance.get('info', {}).get('data', [])
-
-            usdt_total = balance.get('USDT', {}).get('total', 0) or 0
-            print(f"🔍 [EQUITY DEBUG] Number of account entries in data[]: {len(data)}")
-            for i, entry in enumerate(data):
-                print(f"🔍 [EQUITY DEBUG] entry[{i}] raw totalEq: {entry.get('totalEq')!r}")
-                details = entry.get('details', [])
-                print(f"🔍 [EQUITY DEBUG] entry[{i}] has {len(details)} currency detail(s)")
-                for d in details:
-                    print(f"🔍 [EQUITY DEBUG]   ccy={d.get('ccy')!r} eq={d.get('eq')!r} "
-                         f"eqUsd={d.get('eqUsd')!r} cashBal={d.get('cashBal')!r}")
-            print(f"🔍 [EQUITY DEBUG] USDT-only total (fallback path): {usdt_total!r}")
-
             if data and data[0].get('totalEq'):
-                result = float(data[0]['totalEq'])
-                print(f"🔍 [EQUITY DEBUG] Returning totalEq-based result: {result}")
-                return result
+                return float(data[0]['totalEq'])
             # Fallback: USDT cash only, if totalEq isn't present for some reason
-            print(f"🔍 [EQUITY DEBUG] No totalEq found, returning USDT-only fallback: {usdt_total}")
-            return float(usdt_total)
+            usdt = balance.get('USDT', {}).get('total', 0) or 0
+            return float(usdt)
         except Exception as e:
             logger.error(f"❌ Failed to fetch balance: {e}")
             raise e
