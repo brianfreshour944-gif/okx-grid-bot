@@ -1,0 +1,105 @@
+"""
+Tests for engine.py and risk.py — pure logic, no network/DB needed.
+Run with: python3 -m pytest test_engine.py -v
+"""
+import time
+import pytest
+from engine import GridEngine, GridLevel
+from risk import RiskManager
+
+
+def test_build_grid_symmetric():
+    eng = GridEngine(levels=3, step_percent=4.0, capital_usdt=600)
+    grid = eng.build_grid(100.0)
+    assert len(grid) == 6
+    buys = sorted([l.price for l in grid if l.side == 'buy'])
+    sells = sorted([l.price for l in grid if l.side == 'sell'])
+    assert buys == [pytest.approx(88.0), pytest.approx(92.0), pytest.approx(96.0)]
+    assert sells == [pytest.approx(104.0), pytest.approx(108.0), pytest.approx(112.0)]
+
+
+def test_capital_split_evenly():
+    eng = GridEngine(levels=2, step_percent=2.0, capital_usdt=400)
+    grid = eng.build_grid(100.0)
+    # 4 total lines, 400 capital -> 100 USDT per level
+    for lvl in grid:
+        assert lvl.qty * lvl.price == pytest.approx(100.0, rel=1e-3)
+
+
+def test_out_of_range():
+    eng = GridEngine(levels=2, step_percent=2.0, capital_usdt=400)
+    eng.build_grid(100.0)
+    low, high = eng.range_bounds()
+    assert not eng.is_out_of_range(100.0)
+    assert not eng.is_out_of_range(low)
+    assert not eng.is_out_of_range(high)
+    assert eng.is_out_of_range(low - 0.01)
+    assert eng.is_out_of_range(high + 0.01)
+
+
+def test_crossed_levels_buy_side():
+    eng = GridEngine(levels=2, step_percent=2.0, capital_usdt=400)
+    eng.build_grid(100.0)
+    # price drops from 100 to 95, should cross the 98 buy level
+    crossed = eng.crossed_levels(current_price=95.0, last_price=100.0)
+    crossed_prices = sorted([c.price for c in crossed if c.side == 'buy'])
+    assert crossed_prices == [pytest.approx(96.0), pytest.approx(98.0)]
+
+
+def test_crossed_levels_sell_side():
+    eng = GridEngine(levels=2, step_percent=2.0, capital_usdt=400)
+    eng.build_grid(100.0)
+    crossed = eng.crossed_levels(current_price=105.0, last_price=100.0)
+    crossed_prices = sorted([c.price for c in crossed if c.side == 'sell'])
+    assert crossed_prices == [pytest.approx(102.0), pytest.approx(104.0)]
+
+
+def test_filled_levels_not_recrossed():
+    eng = GridEngine(levels=2, step_percent=2.0, capital_usdt=400)
+    eng.build_grid(100.0)
+    crossed = eng.crossed_levels(95.0, 100.0)
+    for lvl in crossed:
+        eng.mark_filled(lvl, "order123")
+    # same move again should yield nothing since already filled
+    crossed_again = eng.crossed_levels(95.0, 100.0)
+    assert all(c.filled for c in [l for l in eng.grid if l.price in [c.price for c in crossed]])
+    not_yet_filled = [c for c in crossed_again if not c.filled]
+    assert len(not_yet_filled) == 0
+
+
+def test_filled_buy_qty_total():
+    eng = GridEngine(levels=2, step_percent=2.0, capital_usdt=400)
+    eng.build_grid(100.0)
+    buy_levels = [l for l in eng.grid if l.side == 'buy']
+    eng.mark_filled(buy_levels[0], "o1")
+    total = eng.filled_buy_qty_total()
+    assert total == pytest.approx(buy_levels[0].qty)
+
+
+def test_risk_drawdown_halts():
+    risk = RiskManager()
+    risk.max_drawdown_percent = 10
+    risk.set_starting_equity(1000)
+    now = time.time()
+    assert risk.check_drawdown(950, now) is False  # 5% loss, ok
+    assert risk.check_drawdown(890, now) is True   # 11% loss, halt
+    assert risk.halted is True
+
+
+def test_risk_max_position():
+    risk = RiskManager()
+    risk.max_position_usdt = 100
+    assert risk.can_open_position(current_position_usdt=50, additional_usdt=40) is True
+    assert risk.can_open_position(current_position_usdt=50, additional_usdt=60) is False
+
+
+def test_risk_halt_on_breakout():
+    risk = RiskManager()
+    risk.halt("Price broke out of grid range")
+    assert risk.halted is True
+    assert "broke out" in risk.halt_reason
+
+
+if __name__ == "__main__":
+    import subprocess
+    subprocess.run(["python3", "-m", "pytest", __file__, "-v"])
